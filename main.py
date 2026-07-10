@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import os
 import re
 import csv
@@ -59,12 +57,6 @@ LABEL_SUGGESTIONS = [
     "MICROALBUMINURIE mg/l", "MICROALBUMINURIE mg/24h", "T.S.H. ultra-sensible"
 ]
 
-# Different labs use different acronyms/abbreviations for the same test
-# (e.g. "Gly" or "GAJ" for "Glycime a jeun g/l"). This is a STARTER set of
-# common French lab abbreviations - it's deliberately not exhaustive.
-# Anything not covered here gets learned automatically the first time you
-# correct a label (see DataStore.learn_alias), or can be added by hand via
-# the "Manage Synonyms..." button.
 BUILTIN_ALIASES = {
     "HEMATIES": ["GR", "Hematies", "RBC"],
     "Hémoglobine": ["Hb", "HGB", "Hb g/dl"],
@@ -177,7 +169,7 @@ def group_ocr_lines(raw_boxes):
         })
     items.sort(key=lambda it: it["cy"])
 
-    rows = []  # each: {"items": [...], "cy_sum": float, "h_sum": float, "count": int}
+    rows = []  
     for it in items:
         placed = False
         for row in rows:
@@ -409,9 +401,7 @@ class ImagePipeline:
         self.crop_rect = None
         self.denoise = False
         self.contrast = False
-        # Set by auto_scan(): a perspective-corrected, deskewed version of
-        # `original`. When present, render() builds on top of this instead
-        # of the raw original. None means "no scan run yet".
+
         self.scanned_base = None
         self.shadow_removal = False
 
@@ -446,9 +436,6 @@ class ImagePipeline:
         found = quad is not None
         scanned = four_point_transform(working, quad) if found else working
 
-        # Auto-rotate: FNS/lab forms are portrait; a landscape result after
-        # perspective correction almost always means the page was
-        # photographed sideways.
         h, w = scanned.shape[:2]
         if w > h * 1.15:
             scanned = cv2.rotate(scanned, cv2.ROTATE_90_CLOCKWISE)
@@ -602,7 +589,7 @@ class DataStore:
         self.aliases_path = os.path.join(folder, "label_aliases.json")
         self.data = {"patients": {}}
         self.manifest = {"processed": {}}
-        self.aliases = {}   # normalized_alias -> {"canonical": str, "example": str}
+        self.aliases = {}   
         self._load()
 
     def _load(self):
@@ -800,8 +787,6 @@ class App(tk.Tk):
         self.record_index_map = []
         self.pending_preselect = None
 
-        # Shared by both the menu bar (checkbuttons/sliders reference them)
-        # and the controls row, so they're created before either is built.
         self.angle_var = tk.DoubleVar(value=0.0)
         self.denoise_var = tk.BooleanVar(value=False)
         self.contrast_var = tk.BooleanVar(value=False)
@@ -1197,20 +1182,15 @@ class App(tk.Tk):
 
         found = self.pipeline.auto_scan()
 
-        # Sync the manual controls with what the scan just did, so the
-        # checkboxes/sliders reflect the pipeline's actual state.
         self.angle_var.set(0.0)
         self.contrast_var.set(True)
         self.shadow_var.set(True)
         self.zoom_factor = 1.0
 
-        # Old OCR box overlays were positioned for the pre-scan geometry;
-        # clear them so nothing is shown misaligned. Any values already
-        # typed into the review panel on the right are left untouched.
         self.ocr_lines = []
         self.grouped_lines = []
 
-        self.refresh_display()  # ensure pipeline flags picked up before fit
+        self.refresh_display()  
         self.zoom_fit()
 
         if found:
@@ -1544,10 +1524,6 @@ class App(tk.Tk):
             if not label and not value:
                 continue
 
-            # If this came from OCR and the person corrected the label away
-            # from what was auto-detected/auto-filled, and the corrected
-            # label matches one of our known canonical fields, remember
-            # that abbreviation for next time (this lab's own shorthand).
             raw_label = row.get("raw_label", "")
             if raw_label and normalize_label(raw_label) != normalize_label(label):
                 canonical = _LABEL_LOOKUP_NORM.get(normalize_label(label))
