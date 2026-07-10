@@ -1,4 +1,7 @@
-# Medical Records Digitizer
+![alt text](screenshots/banner.svg)
+
+---
+<h3 align="center"><b>Medical Records Scanner</h3>
 
 ![python](https://img.shields.io/badge/python-3.8~3.12-aff.svg)
 ![os](https://img.shields.io/badge/os-linux%2C%20win%2C%20mac-pink.svg)
