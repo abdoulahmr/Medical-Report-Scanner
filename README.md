@@ -1,5 +1,9 @@
 # Medical Records Digitizer
 
+![python](https://img.shields.io/badge/python-3.8~3.12-aff.svg)
+![os](https://img.shields.io/badge/os-linux%2C%20win%2C%20mac-pink.svg)
+![hardware](https://img.shields.io/badge/hardware-cpu%2C%20gpu%2C%20xpu%2C%20npu-yellow.svg)[![License](https://img.shields.io/badge/license-Apache_2.0-green)](../LICENSE)
+
 A desktop application designed to scan, digitize, and review laboratory follow-up forms into structured, per-patient records. Built using Python with a Tkinter graphical interface, it leverages Advanced Image Processing (OpenCV) and PaddleOCR to streamline data entry for healthcare metrics.
 
 ---
@@ -30,7 +34,9 @@ A desktop application designed to scan, digitize, and review laboratory follow-u
 
 ![screenshot 1](screenshots/screenshot_1.png)
 
-![screenshot 1](screenshots/screenshot_2.png)
+![screenshot 2](screenshots/screenshot_2.png)
+
+![screenshot 3](screenshots/screenshot_3.png)
 
 ### Installation
 
@@ -49,3 +55,33 @@ A desktop application designed to scan, digitize, and review laboratory follow-u
    ```bash
    pip install -r requirements.txt
    python main.py
+
+### Usage Instructions
+1. Loading Images
+- Go to **File > Select Folder... (Ctrl + O)** and select the workspace directory containing your raw patient report images. 
+- Unprocessed images will load sequentially into the main view.
+
+2. Document Preprocessing
+- Select **Image > Scan (Ctrl + K)** to execute automatic perspective flattening, orientation correction, and ambient shadow removal.
+- Use the **Fine Angle** slider to micro-adjust skew if needed.
+- **Manual Adjustments:** Click and drag over the canvas to draw a bounding box for manual cropping, or use the Image menu options to toggle custom filters (Denoise, CLAHE Contrast enhancement).
+
+3. Extracting Metrics (OCR)
+- Click **OCR > Run OCR (Ctrl + R)** to run the parsing pipeline. (Note: The application will download required model weights automatically during the very first run).
+- Green, orange, and red polygons will overlay the raw text to reflect model confidence distributions. Blue dashed lines highlight reconstructed horizontal rows.
+
+4. Review & Data Entry
+- **Patient Linkage:** Assign a Patient ID on the right side panel. If the ID is new, you can add a new patient name. If it belongs to an existing client, the application will query and load historical logs.
+
+- **Group Visits:** To append the current document to an existing patient checkup date, select it from the Record (visit) drop-down menu. Leave it on + New record to generate a brand new consultation instance.
+
+- **Data Verification:** Inspect the populated fields grid. Values lying outside predefined safe baseline boundaries will dynamically generate a colored warning notification flag next to the text field.
+
+- **Custom Fields:** Hit **Visit > Add Blank Field** to introduce custom manual rows for anomalous data markers missed by auto-extraction.
+
+5. Dictionary Expansion & Commit
+- To establish custom shorthand translations (e.g., teaching the local engine that GAJ maps natively to standard Glycémie à jeun), simply select your desired diagnostic fallback within the interactive cell combo-box. The application logs modifications to local profiles on the fly.
+
+- Navigate to **File > Manage Synonyms** to audit, clean, or verify the loaded abbreviation dictionary.
+
+- Press **Visit > Save Visit & Next Image (Ctrl + S)** to compile the changes. All compiled fields are exported into your local workspace directory under ***records.csv*** and ***individual patients/{id}.json*** tracking logs automatically before advancing.

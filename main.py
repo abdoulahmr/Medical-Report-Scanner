@@ -87,7 +87,7 @@ BUILTIN_ALIASES = {
     "CHOLESTEROLTOTAL g/l": ["Chol T", "CT", "Cholesterol total"],
     "TRIGLYCERIDES g/l": ["TG", "Triglycerides"],
     "CHOLESTEROL HDL": ["HDL", "HDL-C", "HDLc"],
-    "CHOLESTEROL LDL": ["LDL", "LDL-C", "LDLc"],
+    "CHOLESTEROL传统 LDL": ["LDL", "LDL-C", "LDLc"],
     "MICROALBUMINURIE mg/l": ["MAU", "Microalb"],
     "T.S.H. ultra-sensible": ["TSH", "TSHus"],
 }
@@ -121,16 +121,6 @@ def try_parse_date(text):
     return None
 
 
-# --------------------------------------------------------------------------
-# Row reconstruction: PaddleOCR often returns one box per "word cluster",
-# so a printed line like
-#     HEMATIES ..................... 4,90 10^6/mm3
-# comes back as THREE separate boxes (label / value / unit) because the
-# dot leaders create a gap the detector doesn't bridge. We reconstruct the
-# original line by grouping boxes with similar Y position into rows, then
-# sorting each row left-to-right and concatenating the text.
-# --------------------------------------------------------------------------
-
 DOT_LEADER_RE = re.compile(r"(?:\.\s*){2,}")
 NUMBER_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
 
@@ -145,13 +135,6 @@ for _canonical, _synonyms in BUILTIN_ALIASES.items():
 
 
 def group_ocr_lines(raw_boxes):
-    """Group raw OCR boxes into reconstructed text rows.
-
-    Steps: sort by Y center, cluster boxes whose Y center is close together
-    into the same row, sort each row's boxes by X, then concatenate text.
-    Returns a list of {"text", "confidence", "bbox"} dicts, one per row,
-    sorted top-to-bottom.
-    """
     if not raw_boxes:
         return []
 
@@ -210,9 +193,6 @@ def group_ocr_lines(raw_boxes):
 
 
 def parse_label_value_unit(text):
-    """Split a reconstructed line like 'HEMATIES 4,90 10^6/mm3' into
-    (label, value, unit) using the first standalone number as the split
-    point. Returns ("", "", "") pieces where nothing plausible is found."""
     cleaned = DOT_LEADER_RE.sub(" ", text)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     m = NUMBER_RE.search(cleaned)
@@ -225,21 +205,6 @@ def parse_label_value_unit(text):
 
 
 def match_known_label(raw_label, extra_aliases=None):
-    """Resolve an OCR'd label to a canonical LABEL_SUGGESTIONS entry.
-
-    Different labs abbreviate the same test differently (e.g. "Gly" for
-    "Glycime a jeun g/l"), and an abbreviation rarely looks similar to the
-    full name character-by-character, so fuzzy string matching alone won't
-    catch it. Resolution order:
-      1. Exact match against a canonical label.
-      2. Exact match against a known alias (built-in list, or ones learned
-         from your past corrections in this folder via extra_aliases).
-      3. Fuzzy match against canonical labels only (handles OCR typos on
-         the full name; NOT used for aliases, since short abbreviations
-         are too easy to fuzzy-match to the wrong thing).
-      4. Otherwise, return the raw OCR text unchanged so it's still
-         editable in the review list.
-    """
     if not raw_label:
         return raw_label
     norm = normalize_label(raw_label)
@@ -286,7 +251,6 @@ def file_hash(path):
 
 
 def order_points(pts):
-    """Order 4 points as top-left, top-right, bottom-right, bottom-left."""
     rect = np.zeros((4, 2), dtype="float32")
     s = pts.sum(axis=1)
     rect[0] = pts[np.argmin(s)]
@@ -298,9 +262,6 @@ def order_points(pts):
 
 
 def find_document_contour(img):
-    """Find the largest 4-point contour that plausibly outlines a
-    document/page in the image. Returns a (4, 2) float32 array of corner
-    points, or None if nothing clearly document-shaped was found."""
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     edged = cv2.Canny(blurred, 50, 150)
@@ -322,8 +283,6 @@ def find_document_contour(img):
 
 
 def four_point_transform(img, pts):
-    """Warp the quadrilateral defined by `pts` into a flat, top-down
-    rectangle (standard perspective-correction / "scan" transform)."""
     rect = order_points(pts)
     (tl, tr, br, bl) = rect
 
@@ -347,10 +306,6 @@ def four_point_transform(img, pts):
 
 
 def compute_skew_angle(img, max_correction=15.0):
-    """Estimate residual (fine) skew angle of a mostly-rectangular document
-    from the spread of its dark (text/ink) pixels. Returns degrees; angles
-    larger than `max_correction` are treated as a detection failure (e.g.
-    a mostly-blank page) and ignored, returning 0.0."""
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = cv2.bitwise_not(gray)
     thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
@@ -371,12 +326,6 @@ def compute_skew_angle(img, max_correction=15.0):
 
 
 def remove_shadows(img):
-    """Flatten uneven lighting/shadows on a scanned document.
-
-    For each color channel, estimates the background illumination via
-    dilation + median blur, then normalizes the image against that
-    background so shadows and gradients are removed while text stays dark.
-    """
     planes = cv2.split(img)
     result_planes = []
     for plane in planes:
@@ -415,17 +364,6 @@ class ImagePipeline:
         self.shadow_removal = False
 
     def auto_scan(self):
-        """One-click document scan: detect the page edges, perspective-
-        correct it flat, auto-rotate to portrait, deskew any residual tilt,
-        remove shadows, and enable contrast enhancement.
-
-        Replaces `scanned_base` (manual crop/rotate/angle adjustments are
-        cleared since the scan already reframes the page); denoise and the
-        shadow-removal/contrast toggles remain available afterwards.
-
-        Returns True if a document boundary was detected, False if the
-        scan fell back to using the full original frame.
-        """
         self.crop_rect = None
         self.rotation_90 = 0
         self.fine_angle = 0.0
@@ -612,9 +550,6 @@ class DataStore:
                     visit["images"] = [old] if old else []
 
     def learn_alias(self, raw_text, canonical):
-        """Remember that `raw_text` (as typed/OCR'd) means `canonical`, so
-        future images with the same abbreviation auto-fill correctly.
-        Returns True if this added/changed a mapping."""
         norm = normalize_label(raw_text)
         if not norm or normalize_label(canonical) == norm:
             return False
@@ -802,6 +737,8 @@ class App(tk.Tk):
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Select Folder...", command=self.select_folder,
                                accelerator="Ctrl+O")
+        file_menu.add_command(label="View Saved Records...", command=self.open_records_viewer,
+                               accelerator="Ctrl+H")
         file_menu.add_command(label="Manage Synonyms...", command=self.open_alias_manager)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.destroy, accelerator="Ctrl+Q")
@@ -856,8 +793,8 @@ class App(tk.Tk):
         self.config(menu=menubar)
         self.menubar = menubar
 
-        # Keyboard shortcuts matching the accelerators shown above.
         self.bind_all("<Control-o>", lambda e: self.select_folder())
+        self.bind_all("<Control-h>", lambda e: self.open_records_viewer())
         self.bind_all("<Control-q>", lambda e: self.destroy())
         self.bind_all("<Control-k>", lambda e: self.auto_scan_current())
         self.bind_all("<Control-r>", lambda e: self.run_ocr())
@@ -1553,7 +1490,88 @@ class App(tk.Tk):
         self.status_label.config(text=msg)
         self.next_image()
 
-    # ------------------------------------------------------- synonyms UI --
+    def open_records_viewer(self):
+        if not self.store:
+            messagebox.showinfo("No folder open", "Select a folder first to view historical records.")
+            return
+
+        win = tk.Toplevel(self)
+        win.title("Saved Patient Records History")
+        win.geometry("800x600")
+
+        top_frame = ttk.Frame(win, padding=6)
+        top_frame.pack(side=tk.TOP, fill=tk.X)
+        ttk.Label(top_frame, text="Search Patient ID/Name:").pack(side=tk.LEFT, padx=4)
+        search_var = tk.StringVar()
+        search_entry = ttk.Entry(top_frame, textvariable=search_var, width=30)
+        search_entry.pack(side=tk.LEFT, padx=4)
+
+        tree_frame = ttk.Frame(win, padding=6)
+        tree_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        columns = ("metric", "value", "unit", "flag")
+        tree = ttk.Treeview(tree_frame, columns=columns, show="tree headings")
+        tree.heading("#0", text="Patient / Visit Date")
+        tree.heading("metric", text="Laboratory Metric / Field")
+        tree.heading("value", text="Value")
+        tree.heading("unit", text="Unit")
+        tree.heading("flag", text="Anomalies / Flags")
+
+        tree.column("#0", width=240, anchor="w")
+        tree.column("metric", width=220, anchor="w")
+        tree.column("value", width=90, anchor="center")
+        tree.column("unit", width=80, anchor="center")
+        tree.column("flag", width=150, anchor="w")
+
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        tree_frame.rowconfigure(0, weight=1)
+        tree_frame.columnconfigure(0, weight=1)
+
+        def populate_tree(*_args):
+            tree.delete(*tree.get_children())
+            query = search_var.get().strip().lower()
+
+            for pid, patient in sorted(self.store.data.get("patients", {}).items()):
+                p_name = patient.get("name", "")
+                if query and (query not in pid.lower() and query not in p_name.lower()):
+                    continue
+
+                p_node = tree.insert("", tk.END, text=f"{pid} - {p_name}", open=False)
+                
+                visits = patient.get("visits", [])
+                sorted_visits = sorted(visits, key=lambda v: v.get("visit_date") or "", reverse=True)
+                
+                for idx, visit in enumerate(sorted_visits):
+                    v_date = visit.get("visit_date") or "Unknown Date"
+                    img_count = len(visit.get("images", []))
+                    v_node = tree.insert(p_node, tk.END, text=f"Visit: {v_date} ({img_count} Img)", open=False)
+                    
+                    for field in visit.get("fields", []):
+                        tree.insert(
+                            v_node, 
+                            tk.END, 
+                            text="", 
+                            values=(
+                                field.get("label", ""),
+                                field.get("value", ""),
+                                field.get("unit", ""),
+                                field.get("flag", "")
+                            )
+                        )
+
+        search_var.trace_add("write", populate_tree)
+        populate_tree()
+
+        btn_frame = ttk.Frame(win, padding=6)
+        btn_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        ttk.Button(btn_frame, text="Close", command=win.destroy).pack(side=tk.RIGHT, padx=4)
+
     def open_alias_manager(self):
         if not self.store:
             messagebox.showinfo("No folder open", "Select a folder first - synonyms are saved per folder.")
