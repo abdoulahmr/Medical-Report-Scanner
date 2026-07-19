@@ -2844,12 +2844,6 @@ class App(tk.Tk):
         self.zoom_label = ttk.Label(controls, text="100%", width=5, anchor="center")
         self.zoom_label.pack(side=tk.LEFT)
 
-        ttk.Label(
-            controls,
-            text="(drag = crop, wheel = zoom, middle-drag = pan — Scan, Rotate, Denoise, "
-                 "Contrast, Shadows, Grid, and Zoom are all in the Image/View menus)"
-        ).pack(side=tk.LEFT, padx=8)
-
         canvas_frame = ttk.Frame(left)
         canvas_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         canvas_frame.rowconfigure(0, weight=1)
